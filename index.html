@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>รายการงาน — ระบบติดตามงานออนไลน์</title>
+
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="site.webmanifest">
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<link rel="stylesheet" href="style.css">
+
+<!-- Supabase JS Client (v2) -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<!-- SweetAlert2 -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-icon"><i class="fa-solid fa-inbox"></i></div>
+      <div class="brand-text">
+        <h1>ระบบติดตามงานออนไลน์</h1>
+        <span>Assignment Tracker</span>
+      </div>
+    </div>
+
+    <div class="topbar-controls">
+      <button class="icon-btn" id="themeToggleBtn" onclick="toggleTheme()" title="สลับโหมดมืด/สว่าง">
+        <i class="fa-solid fa-moon" id="themeIcon"></i>
+      </button>
+      <button class="icon-btn" id="lineConnectBtn" onclick="handleLineConnect()" title="เชื่อมต่อ LINE เพื่อรับแจ้งเตือน" style="width:38px;height:38px;">
+        <i class="fa-brands fa-line" style="font-size:16px"></i>
+      </button>
+      <span class="topbar-divider" aria-hidden="true"></span>
+      <button class="profile-chip" id="profileChip" onclick="handleLogout()">
+        <div class="avatar" id="avatarInitials">--</div>
+        <div>
+          <div class="name" id="profileName">กำลังโหลด...</div>
+          <div class="role" id="profileRole">&nbsp;</div>
+        </div>
+        <i class="fa-solid fa-right-from-bracket" style="font-size:11px;color:var(--text-muted);margin-left:6px"></i>
+      </button>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <section class="dashboard-intro">
+      <div>
+        <p class="eyebrow">แดชบอร์ดส่วนตัว</p>
+        <h2>จัดการทุกเดดไลน์<br><span>ให้ทันเวลา</span></h2>
+        <p class="intro-copy">วางแผนงาน ติดตามความคืบหน้า และรับการแจ้งเตือนในที่เดียว</p>
+      </div>
+      <div class="today-card">
+        <i class="fa-regular fa-calendar"></i>
+        <div><span>วันนี้</span><strong id="todayDate">—</strong></div>
+      </div>
+    </section>
+
+    <div class="stats-row">
+      <div class="stat total">
+        <div class="num" id="statTotal">0</div>
+        <div class="label">งานทั้งหมด</div>
+      </div>
+      <div class="stat pending">
+        <div class="num" id="statPending">0</div>
+        <div class="label">รอดำเนินการ</div>
+      </div>
+      <div class="stat submitted">
+        <div class="num" id="statSubmitted">0</div>
+        <div class="label">ส่งแล้ว</div>
+      </div>
+      <div class="stat overdue">
+        <div class="num" id="statOverdue">0</div>
+        <div class="label">เลยกำหนด</div>
+      </div>
+    </div>
+
+    <div class="content-grid">
+
+      <!-- ============ LEFT: Add Task Form ============ -->
+      <section class="panel">
+        <h2><i class="fa-regular fa-square-plus" style="color:var(--accent);margin-right:6px"></i>เพิ่มงานใหม่</h2>
+        <form id="formAddTask">
+          <div class="field">
+            <label>ชื่องาน</label>
+            <input type="text" id="taskName" placeholder="เช่น รายงานบทที่ 3" required>
+          </div>
+          <div class="field">
+            <label>วิชา</label>
+            <input type="text" id="taskSubject" placeholder="เช่น การเขียนโปรแกรมเว็บ" required>
+          </div>
+          <div class="field">
+            <label>รายละเอียด</label>
+            <textarea id="taskDescription" placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)"></textarea>
+          </div>
+          <div class="field">
+            <label>วันครบกำหนดส่ง (เวลาไทย)</label>
+            <input type="hidden" id="taskDeadline">
+            <button type="button" class="deadline-picker-trigger" id="taskDeadlinePicker">
+              <i class="fa-regular fa-calendar"></i>
+              <span>เลือกวันและเวลา</span>
+              <i class="fa-solid fa-chevron-right"></i>
+            </button>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label>สถานะเริ่มต้น</label>
+              <select id="taskStatus">
+                <option value="pending">ยังไม่เริ่ม</option>
+                <option value="in_progress">กำลังทำ</option>
+                <option value="submitted">ส่งแล้ว</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>เตือนผ่าน LINE</label>
+              <select id="taskReminder">
+                <option value="1440">ก่อนส่ง 1 วัน</option>
+                <option value="180">ก่อนส่ง 3 ชม.</option>
+                <option value="60">ก่อนส่ง 1 ชม.</option>
+                <option value="0">ไม่แจ้งเตือน</option>
+              </select>
+            </div>
+          </div>
+          <div class="field">
+            <label>ไฟล์แนบ (ถ้ามี)</label>
+            <div class="file-drop" id="fileDropZone">
+              <i class="fa-solid fa-cloud-arrow-up"></i>
+              <span id="fileDropLabel">ลากไฟล์มาวาง หรือคลิกเพื่อเลือก (สูงสุด 20MB)</span>
+            </div>
+            <input type="file" id="taskFile" style="display:none">
+            <button class="file-reset-btn" id="removeSelectedFile" type="button" hidden>
+              <i class="fa-solid fa-xmark"></i> เอาไฟล์ออก
+            </button>
+          </div>
+          <button type="submit" class="btn-primary" id="btnAddTask">
+            <i class="fa-solid fa-check"></i> บันทึกงาน
+          </button>
+        </form>
+      </section>
+
+      <!-- ============ RIGHT: Task List ============ -->
+      <section>
+        <div class="list-header">
+          <h2>รายการงาน</h2>
+          <div class="filter-tabs" id="filterTabs">
+            <button class="active" data-filter="all">ทั้งหมด</button>
+            <button data-filter="urgent">ใกล้ครบกำหนด</button>
+            <button data-filter="pending">รอดำเนินการ</button>
+            <button data-filter="submitted">ส่งแล้ว</button>
+          </div>
+        </div>
+
+        <div class="task-toolbar" aria-label="ค้นหาและจัดเรียงงาน">
+          <label class="search-box">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="search" id="taskSearch" placeholder="ค้นหาชื่องาน หรือวิชา">
+          </label>
+          <label class="sort-control">
+            <span>เรียง</span>
+            <select id="taskSort">
+              <option value="deadline-asc">ใกล้กำหนดก่อน</option>
+              <option value="deadline-desc">กำหนดส่งไกลก่อน</option>
+              <option value="status">ตามสถานะ</option>
+              <option value="created-desc">เพิ่มล่าสุด</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="cards" id="taskCards">
+          <!-- การ์ดงานจะถูก render ที่นี่ด้วย JavaScript (app.js) -->
+        </div>
+
+        <div class="pagination-bar" id="taskPagination" hidden>
+          <button type="button" class="page-nav-btn" id="btnPrevPage">
+            <i class="fa-solid fa-chevron-left"></i> ก่อนหน้า
+          </button>
+          <span class="page-indicator" id="pageIndicator">หน้า 1 / 1</span>
+          <button type="button" class="page-nav-btn" id="btnNextPage">
+            ถัดไป <i class="fa-solid fa-chevron-right"></i>
+          </button>
+        </div>
+
+        <div class="empty-state" id="emptyState" style="display:none">
+          <i class="fa-regular fa-folder-open"></i>
+          ยังไม่มีงานในหมวดนี้
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <div class="ios-picker-backdrop" id="iosPickerBackdrop" aria-hidden="true">
+    <section class="ios-picker-sheet" role="dialog" aria-modal="true" aria-labelledby="iosPickerTitle">
+      <div class="ios-picker-header">
+        <button type="button" class="picker-text-btn" id="iosPickerCancel">ยกเลิก</button>
+        <strong id="iosPickerTitle">กำหนดส่งงาน</strong>
+        <button type="button" class="picker-text-btn confirm" id="iosPickerConfirm">เสร็จสิ้น</button>
+      </div>
+      <p class="picker-timezone"><i class="fa-solid fa-location-dot"></i> เวลาในประเทศไทย (UTC+7)</p>
+      <div class="calendar-picker-body">
+        <div class="picker-field">
+          <label><i class="fa-regular fa-calendar-days"></i> เลือกวันที่</label>
+          <input type="date" id="modalDatePicker" class="calendar-input">
+        </div>
+        <div class="picker-field">
+          <label><i class="fa-regular fa-clock"></i> เลือกเวลา</label>
+          <div class="ios-wheels-time-only" aria-label="เลือกเวลา">
+            <div class="wheel-column" id="pickerHourWheel" aria-label="ชั่วโมง"></div>
+            <span class="wheel-colon">:</span>
+            <div class="wheel-column" id="pickerMinuteWheel" aria-label="นาที"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Logic ทั้งหมด (auth guard, CRUD, realtime, countdown) อยู่ใน app.js -->
+  <script src="app.js"></script>
+</body>
+</html>

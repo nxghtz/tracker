@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>เข้าสู่ระบบ — ระบบส่งงานออนไลน์</title>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<link rel="stylesheet" href="style.css">
+
+<!-- Supabase JS Client (v2) -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<!-- SweetAlert2 -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+</head>
+<body>
+
+<div class="auth-wrapper">
+  <div class="auth-card">
+
+    <div class="auth-logo">
+      <div class="icon"><i class="fa-solid fa-inbox"></i></div>
+      <div>
+        <h1>ระบบส่งงานออนไลน์</h1>
+        <span>Assignment Tracker</span>
+      </div>
+    </div>
+
+    <div class="auth-tabs">
+      <button id="tabLogin" class="active" onclick="switchTab('login')">เข้าสู่ระบบ</button>
+      <button id="tabRegister" onclick="switchTab('register')">สมัครสมาชิก</button>
+    </div>
+
+    <!-- ============ LOGIN PANEL ============ -->
+    <div id="panelLogin" class="auth-panel active">
+      <form id="formLogin">
+        <div class="field">
+          <label>อีเมลหรือชื่อผู้ใช้งาน</label>
+          <div class="input-wrap">
+            <i class="fa-regular fa-envelope"></i>
+            <input type="text" id="loginIdentity" placeholder="you@example.com หรือ username" autocomplete="username" required>
+          </div>
+        </div>
+        <div class="field">
+          <div class="field-label-row">
+            <label>รหัสผ่าน</label>
+            <a class="forgot-password-link" onclick="handleForgotPassword()">ลืมรหัสผ่าน?</a>
+          </div>
+          <div class="input-wrap">
+            <i class="fa-solid fa-lock"></i>
+            <input type="password" id="loginPassword" placeholder="••••••••" required>
+          </div>
+        </div>
+        <button type="submit" class="btn-primary" id="btnLogin">
+          <i class="fa-solid fa-right-to-bracket"></i> เข้าสู่ระบบ
+        </button>
+      </form>
+      <div class="auth-footnote">
+        ยังไม่มีบัญชี? <a onclick="switchTab('register')">สมัครสมาชิก</a>
+      </div>
+    </div>
+
+    <!-- ============ REGISTER PANEL ============ -->
+    <div id="panelRegister" class="auth-panel">
+      <form id="formRegister">
+        <div class="field-row">
+          <div class="field">
+            <label>ชื่อ</label>
+            <div class="input-wrap">
+              <i class="fa-regular fa-user"></i>
+              <input type="text" id="regFirstName" placeholder="ชื่อ" required>
+            </div>
+          </div>
+          <div class="field">
+            <label>นามสกุล</label>
+            <div class="input-wrap">
+              <i class="fa-regular fa-user"></i>
+              <input type="text" id="regLastName" placeholder="นามสกุล" required>
+            </div>
+          </div>
+        </div>
+        <div class="field">
+          <label>ชื่อผู้ใช้งาน</label>
+          <div class="input-wrap">
+            <i class="fa-solid fa-at"></i>
+            <input type="text" id="regUsername" placeholder="ใช้ a-z, 0-9, _ หรือ -" minlength="3" maxlength="30" pattern="[A-Za-z0-9_-]+" autocomplete="username" required>
+          </div>
+          <small class="field-hint" id="usernameHint"></small>
+        </div>
+        <div class="field">
+          <label>อีเมล</label>
+          <div class="input-wrap">
+            <i class="fa-regular fa-envelope"></i>
+            <input type="email" id="regEmail" placeholder="you@example.com" required>
+          </div>
+        </div>
+        <div class="field">
+          <label>รหัสผ่าน</label>
+          <div class="input-wrap">
+            <i class="fa-solid fa-lock"></i>
+            <input type="password" id="regPassword" placeholder="อย่างน้อย 6 ตัวอักษร" minlength="6" required>
+          </div>
+        </div>
+        <button type="submit" class="btn-primary" id="btnRegister">
+          <i class="fa-solid fa-user-plus"></i> สมัครสมาชิก
+        </button>
+      </form>
+      <div class="auth-footnote">
+        มีบัญชีอยู่แล้ว? <a onclick="switchTab('login')">เข้าสู่ระบบ</a>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  /* =====================================================================
+     CONFIG — แก้ 2 ค่านี้เป็นของโปรเจกต์ Supabase ของคุณ
+     หาได้จาก Supabase Dashboard > Project Settings > API
+     ===================================================================== */
+  const SUPABASE_URL = "https://tdceqvzottwnvdxgztol.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRkY2VxdnpvdHR3bnZkeGd6dG9sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI5MDIzMzYsImV4cCI6MjA5ODQ3ODMzNn0.psPQn1E-FpLJEKl0figueqTO_3Z4AS6glsT78KYxwQw";
+
+  const { createClient } = supabase;
+  const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  /* ---------------------------------------------------------------------
+     ถ้ามี session อยู่แล้ว (login ค้างไว้) ให้เด้งไปหน้าหลักทันที
+     --------------------------------------------------------------------- */
+  (async () => {
+    const { data: { session } } = await sb.auth.getSession();
+    if (session) {
+      window.location.href = "index.html";
+    }
+  })();
+
+  /* ---------------------------------------------------------------------
+     Tab switching (Login / Register)
+     --------------------------------------------------------------------- */
+  function switchTab(tab) {
+    const isLogin = tab === "login";
+    document.getElementById("tabLogin").classList.toggle("active", isLogin);
+    document.getElementById("tabRegister").classList.toggle("active", !isLogin);
+    document.getElementById("panelLogin").classList.toggle("active", isLogin);
+    document.getElementById("panelRegister").classList.toggle("active", !isLogin);
+  }
+
+  /* ---------------------------------------------------------------------
+     LOGIN
+     --------------------------------------------------------------------- */
+  document.getElementById("formLogin").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById("btnLogin");
+    const identity = document.getElementById("loginIdentity").value.trim();
+    const password = document.getElementById("loginPassword").value;
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> กำลังเข้าสู่ระบบ...';
+
+    let error;
+    if (identity.includes("@")) {
+      ({ error } = await sb.auth.signInWithPassword({ email: identity, password }));
+    } else {
+      // username ถูกบังคับให้เป็นตัวพิมพ์เล็กเสมอตอนสมัคร/ตั้งชื่อ (ดู formRegister,
+      // promptUsername() ใน app.js) แต่ถ้าไม่ lowercase ตรงนี้ด้วย ผู้ใช้ที่พิมพ์
+      // username ด้วยตัวพิมพ์ใหญ่-เล็กต่างจากตอนสมัคร (เช่น "Mind_2026" แทน
+      // "mind_2026") จะหาบัญชีไม่เจอและถูกแจ้งว่า login ไม่สำเร็จ ทั้งที่
+      // username/password ที่จำได้ถูกต้องทุกตัวอักษร
+      const { data, error: loginError } = await sb.functions.invoke("username-login", {
+        body: { username: identity.toLowerCase(), password }
+      });
+      error = loginError || (data?.error ? new Error(data.error) : null);
+      if (!error && data?.access_token && data?.refresh_token) {
+        ({ error } = await sb.auth.setSession({
+          access_token: data.access_token,
+          refresh_token: data.refresh_token
+        }));
+      }
+    }
+
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> เข้าสู่ระบบ';
+
+    if (error) {
+      Swal.fire({
+        icon: "error",
+        title: "เข้าสู่ระบบไม่สำเร็จ",
+        text: translateAuthError(error.message),
+        confirmButtonColor: "#5b6ee1"
+      });
+      return;
+    }
+
+    // Login สำเร็จ -> ไปหน้าหลัก
+    window.location.href = "index.html";
+  });
+
+  /* ---------------------------------------------------------------------
+     ลืมรหัสผ่าน — ขออีเมล แล้วให้ Supabase ส่งลิงก์ตั้งรหัสผ่านใหม่ไปให้
+     --------------------------------------------------------------------- */
+  async function handleForgotPassword() {
+    const { value: email } = await Swal.fire({
+      icon: "question",
+      title: "ลืมรหัสผ่าน?",
+      text: "กรอกอีเมลที่ใช้สมัครสมาชิก ระบบจะส่งลิงก์สำหรับตั้งรหัสผ่านใหม่ไปให้",
+      input: "email",
+      inputPlaceholder: "you@example.com",
+      confirmButtonText: "ส่งลิงก์รีเซ็ตรหัสผ่าน",
+      confirmButtonColor: "#5b6ee1",
+      showCancelButton: true,
+      cancelButtonText: "ยกเลิก",
+      inputValidator: (value) => {
+        if (!value || !value.trim()) return "กรุณากรอกอีเมล";
+      }
+    });
+    if (!email) return;
+
+    Swal.fire({
+      title: "กำลังส่งอีเมล...",
+      allowOutsideClick: false,
+      didOpen: () => Swal.showLoading()
+    });
+
+    // redirectTo ต้องอยู่ใน Redirect URLs allowlist ของโปรเจกต์ (Authentication >
+    // URL Configuration) ไม่งั้น Supabase จะปฏิเสธ/ตัดพารามิเตอร์ทิ้งตอน redirect กลับมา
+    const { error } = await sb.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/reset-password.html`
+    });
+
+    if (error) {
+      Swal.fire({
+        icon: "error",
+        title: "ส่งไม่สำเร็จ",
+        text: translateAuthError(error.message),
+        confirmButtonColor: "#5b6ee1"
+      });
+      return;
+    }
+
+    // ไม่บอกตรงๆ ว่าอีเมลนี้มีในระบบหรือไม่ (กัน user enumeration) — Supabase
+    // เองก็ตอบ success เสมอไม่ว่าอีเมลจะมีอยู่จริงหรือไม่ ให้ข้อความสอดคล้องกัน
+    Swal.fire({
+      icon: "success",
+      title: "ส่งลิงก์แล้ว",
+      text: "ถ้าอีเมลนี้มีอยู่ในระบบ คุณจะได้รับลิงก์สำหรับตั้งรหัสผ่านใหม่ในอีเมลไม่นานนี้",
+      confirmButtonColor: "#5b6ee1"
+    });
+  }
+
+
+  document.getElementById("formRegister").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById("btnRegister");
+    const firstName = document.getElementById("regFirstName").value.trim();
+    const lastName = document.getElementById("regLastName").value.trim();
+    const username = document.getElementById("regUsername").value.trim().toLowerCase();
+    const email = document.getElementById("regEmail").value.trim();
+    const password = document.getElementById("regPassword").value;
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> กำลังสมัครสมาชิก...';
+
+    // เช็คซ้ำอีกครั้งตอนกดสมัคร (กันกรณี 2 คนพิมพ์ชื่อเดียวกันพร้อมกันพอดี
+    // ระหว่างที่เช็คแบบ real-time ผ่านไปแล้วแต่ยังไม่ทันกดสมัคร)
+    const { data: takenCheck, error: takenError } = await sb.rpc("is_username_taken", { check_username: username });
+    if (!takenError && takenCheck) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-user-plus"></i> สมัครสมาชิก';
+      setUsernameHint("ชื่อผู้ใช้งานนี้ถูกใช้แล้ว กรุณาลองชื่ออื่น", false);
+      document.getElementById("regUsername").focus();
+      return;
+    }
+
+    // first_name / last_name ถูกส่งไปเป็น user_metadata
+    // -> trigger handle_new_user() ในฐานข้อมูลจะอ่านค่านี้ไปสร้างแถวใน
+    //    public.profiles ให้อัตโนมัติ (ดู supabase_setup.sql ข้อ 5)
+    const { data, error } = await sb.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          first_name: firstName,
+          last_name: lastName,
+          username
+        }
+      }
+    });
+
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-user-plus"></i> สมัครสมาชิก';
+
+    if (error) {
+      Swal.fire({
+        icon: "error",
+        title: "สมัครสมาชิกไม่สำเร็จ",
+        text: translateAuthError(error.message),
+        confirmButtonColor: "#5b6ee1"
+      });
+      return;
+    }
+
+    // กรณีโปรเจกต์เปิด "Confirm email" ไว้ (ค่าเริ่มต้นของ Supabase)
+    // ผู้ใช้จะยังไม่มี session ทันที ต้องไปกดยืนยันในอีเมลก่อน
+    if (!data.session) {
+      Swal.fire({
+        icon: "success",
+        title: "สมัครสมาชิกสำเร็จ",
+        text: "กรุณาตรวจสอบอีเมลของคุณเพื่อยืนยันการสมัครสมาชิก ก่อนเข้าสู่ระบบ",
+        confirmButtonColor: "#5b6ee1"
+      }).then(() => switchTab("login"));
+      return;
+    }
+
+    // ถ้าปิด Confirm email ไว้ จะได้ session ทันที -> เข้าหน้าหลักได้เลย
+    window.location.href = "index.html";
+  });
+
+  /* ---------------------------------------------------------------------
+     เช็คชื่อผู้ใช้งานซ้ำแบบ real-time ระหว่างพิมพ์ (debounce 400ms)
+     --------------------------------------------------------------------- */
+  let usernameCheckTimer = null;
+  let usernameCheckToken = 0;
+
+  document.getElementById("regUsername").addEventListener("input", (e) => {
+    const value = e.target.value.trim();
+    clearTimeout(usernameCheckTimer);
+
+    if (!value) {
+      setUsernameHint("", null);
+      return;
+    }
+    if (!/^[A-Za-z0-9_-]{3,30}$/.test(value)) {
+      setUsernameHint("ใช้ตัวอักษรอังกฤษ ตัวเลข _ หรือ - จำนวน 3–30 ตัว", false);
+      return;
+    }
+
+    setUsernameHint("กำลังตรวจสอบ...", null);
+    const myToken = ++usernameCheckToken;
+
+    usernameCheckTimer = setTimeout(async () => {
+      const { data: taken, error } = await sb.rpc("is_username_taken", { check_username: value });
+      if (myToken !== usernameCheckToken) return; // มีการพิมพ์ต่อระหว่างรอ ผลนี้เก่าแล้ว ไม่ต้องใช้
+
+      if (error) {
+        setUsernameHint("", null); // เช็คไม่สำเร็จ ปล่อยผ่านไปเช็คซ้ำอีกทีตอนกดสมัคร
+        return;
+      }
+      setUsernameHint(taken ? "ชื่อนี้ถูกใช้แล้ว" : "ใช้ชื่อนี้ได้", !taken);
+    }, 400);
+  });
+
+  function setUsernameHint(text, isAvailable) {
+    const hint = document.getElementById("usernameHint");
+    hint.textContent = text;
+    hint.classList.remove("hint-ok", "hint-error");
+    if (isAvailable === true) hint.classList.add("hint-ok");
+    if (isAvailable === false) hint.classList.add("hint-error");
+  }
+
+  /* ---------------------------------------------------------------------
+     แปล error message ที่พบบ่อยจาก Supabase Auth เป็นภาษาไทย
+     --------------------------------------------------------------------- */
+  function translateAuthError(msg) {
+    // กันเหนียวเผื่อชื่อผู้ใช้งานซ้ำหลุดไปถึงขั้น insert จริง (race condition)
+    // ซึ่งจะโผล่มาเป็น database error ดิบๆ ไม่ใช่ข้อความมาตรฐานของ Supabase Auth
+    if (/username/i.test(msg) && /duplicate|unique|already/i.test(msg)) {
+      return "ชื่อผู้ใช้งานนี้ถูกใช้แล้ว กรุณาลองชื่ออื่น";
+    }
+    const map = {
+      "Invalid login credentials": "อีเมลหรือรหัสผ่านไม่ถูกต้อง",
+      "User already registered": "อีเมลนี้ถูกใช้สมัครสมาชิกแล้ว",
+      "Password should be at least 6 characters": "รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร",
+      "Email not confirmed": "กรุณายืนยันอีเมลก่อนเข้าสู่ระบบ",
+      "Unable to validate email address: invalid format": "รูปแบบอีเมลไม่ถูกต้อง",
+      "Signup requires a valid password": "กรุณากรอกรหัสผ่านให้ถูกต้อง",
+      "Signups not allowed for this instance": "ขณะนี้ปิดรับสมัครสมาชิกใหม่ชั่วคราว",
+      "User not found": "ไม่พบบัญชีผู้ใช้งานนี้ในระบบ",
+      "Email rate limit exceeded": "มีการขอส่งอีเมลถี่เกินไป กรุณารอสักครู่แล้วลองใหม่",
+      "For security purposes, you can only request this after some time": "เพื่อความปลอดภัย กรุณารอสักครู่ก่อนลองใหม่อีกครั้ง",
+      "Failed to fetch": "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่"
+    };
+    if (map[msg]) return map[msg];
+
+    // เผื่อข้อความมาจาก Supabase ในรูปแบบที่มีตัวเลข/รายละเอียดแปรผัน เช่น
+    // "For security purposes, you can only request this after 42 seconds"
+    if (/security purposes.*after \d+ seconds?/i.test(msg)) {
+      return "เพื่อความปลอดภัย กรุณารอสักครู่ก่อนลองใหม่อีกครั้ง";
+    }
+    if (/rate limit/i.test(msg)) {
+      return "ทำรายการถี่เกินไป กรุณารอสักครู่แล้วลองใหม่อีกครั้ง";
+    }
+
+    // ข้อความอื่นที่ไม่รู้จัก (เช่น error ใหม่จาก Supabase หรือจาก Edge Function ที่ยัง
+    // ไม่ได้แปล) — เก็บข้อความต้นฉบับไว้ใน console สำหรับ debug แต่ไม่โชว์ raw
+    // ภาษาอังกฤษให้ผู้ใช้เห็นตรงๆ เพื่อให้ประสบการณ์การใช้งานสอดคล้องกันทั้งหมด
+    console.warn("Untranslated auth error:", msg);
+    return "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง";
+  }
+
+</script>
+
+</body>
+</html>
