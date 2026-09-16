@@ -116,7 +116,7 @@ button{ font-family: inherit; }
 }
 .field-hint.hint-ok{ color: var(--success); }
 .field-hint.hint-error{ color: var(--danger); }
-.field label{
+.field label:not(.switch-field){
   display:block;
   font-size: 12.5px;
   color: var(--text-muted);
@@ -989,3 +989,231 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   .dashboard-intro{padding:26px;}.today-card{display:none}.task-toolbar{flex-direction:column}.sort-control{justify-content:space-between}.sort-control select{flex:1}
 }
 @media (max-width:560px){.brand-text span{display:none}.profile-chip{padding-right:7px}.profile-chip>div:not(.avatar),.profile-chip>i{display:none}.dashboard-intro h2{font-size:25px}.dashboard-intro{min-height:156px}.stats-row{display:grid;grid-template-columns:1fr 1fr;gap:18px;padding-bottom:24px}.field-row{flex-direction:column;gap:0}.card{gap:12px;padding:15px}.card .actions{margin-left:auto}.card .desc{white-space:normal}.list-header{align-items:flex-start;gap:10px;flex-direction:column}.filter-tabs{width:100%;justify-content:space-between}.filter-tabs button{padding:6px 10px}}
+
+/* =====================================================================
+   TOGGLE SWITCH — เปิด/ปิดการแจ้งเตือนของงาน (แทนที่ dropdown เดิม)
+   ===================================================================== */
+.switch-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 43px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-main);
+}
+.switch-field input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.switch-track {
+  position: relative;
+  width: 40px;
+  height: 24px;
+  flex: 0 0 auto;
+  background: var(--border);
+  border-radius: 999px;
+  transition: background .15s ease;
+}
+.switch-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  transition: transform .15s ease;
+}
+.switch-field input:checked + .switch-track {
+  background: var(--accent);
+}
+.switch-field input:checked + .switch-track .switch-thumb {
+  transform: translateX(16px);
+}
+.switch-field input:focus-visible + .switch-track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.switch-text {
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+/* ชื่ออาจารย์บนการ์ดงาน */
+.teacher-name {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+.teacher-name i { color: var(--accent); font-size: 11px; }
+
+/* =====================================================================
+   VIEW SWITCH — สลับ "รายการ" / "ปฏิทิน"
+   ===================================================================== */
+.view-switch {
+  display: flex;
+  gap: 6px;
+  background: var(--surface);
+  padding: 4px;
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+}
+.view-switch button {
+  border: none;
+  background: transparent;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.view-switch button.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* =====================================================================
+   CALENDAR VIEW — มุมมองปฏิทินรายเดือน
+   ===================================================================== */
+.calendar-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.calendar-month-label {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--text-main);
+  flex: 1;
+  text-align: center;
+}
+.calendar-today-btn {
+  margin-left: auto;
+}
+.calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding-bottom: 8px;
+}
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+.calendar-day {
+  min-height: 96px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-shadow: var(--shadow);
+}
+.calendar-day.other-month {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  opacity: .35;
+}
+.calendar-day.today {
+  border-color: var(--accent);
+}
+.calendar-day.today .day-num {
+  background: var(--accent);
+  color: #fff;
+}
+.calendar-day .day-num {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+.cal-task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden;
+}
+.cal-task-chip {
+  font-size: 10.5px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.cal-task-chip.status-in_progress { background: var(--accent-soft); color: var(--accent); }
+.cal-task-chip.status-submitted { background: var(--success-soft); color: var(--success); }
+.cal-task-chip.status-late { background: var(--danger-soft); color: var(--danger); }
+.cal-task-chip.status-cancelled { background: var(--bg); color: var(--text-muted); text-decoration: line-through; }
+.cal-task-more {
+  font-size: 10px;
+  color: var(--text-muted);
+  padding: 1px 6px;
+}
+
+@media (max-width: 560px) {
+  .calendar-day { min-height: 70px; padding: 4px; }
+  .cal-task-chip { font-size: 9.5px; }
+  .calendar-month-label { font-size: 13px; }
+}
+
+/* =====================================================================
+   QUIET HOURS — dropdown เปิด/ปิดโหมดงดแจ้งเตือนกลางคืน (23:00–06:00 คงที่)
+   ===================================================================== */
+.quiet-hours-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+.quiet-hours-control i {
+  font-size: 12.5px;
+  color: var(--accent);
+  flex: 0 0 auto;
+}
+.quiet-hours-control select {
+  border: none;
+  background: transparent;
+  color: var(--text-main);
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+  max-width: 170px;
+}
+
+@media (max-width: 560px) {
+  .quiet-hours-control select { max-width: 30px; }
+  .quiet-hours-control { padding: 0 8px; }
+}

@@ -42,14 +42,14 @@
           </div>
         </div>
         <div class="field">
-          <div class="field-label-row">
-            <label>รหัสผ่าน</label>
-            <a class="forgot-password-link" onclick="handleForgotPassword()">ลืมรหัสผ่าน?</a>
-          </div>
+          <label>รหัสผ่าน</label>
           <div class="input-wrap">
             <i class="fa-solid fa-lock"></i>
             <input type="password" id="loginPassword" placeholder="••••••••" required>
           </div>
+          <small class="field-hint" style="text-align:right;">
+            <a onclick="handleForgotPassword()" style="cursor:pointer;color:var(--accent);">ลืมรหัสผ่าน?</a>
+          </small>
         </div>
         <button type="submit" class="btn-primary" id="btnLogin">
           <i class="fa-solid fa-right-to-bracket"></i> เข้าสู่ระบบ
@@ -146,6 +146,48 @@
   }
 
   /* ---------------------------------------------------------------------
+     ลืมรหัสผ่าน -> ขอลิงก์ตั้งรหัสผ่านใหม่ทางอีเมล
+     (ต้องกรอกอีเมล ไม่ใช่ username เพราะ Supabase Auth ส่งลิงก์ตามอีเมลเท่านั้น)
+     --------------------------------------------------------------------- */
+  async function handleForgotPassword() {
+    const { value: email } = await Swal.fire({
+      title: "ลืมรหัสผ่าน?",
+      text: "กรอกอีเมลที่ใช้สมัครสมาชิก เราจะส่งลิงก์สำหรับตั้งรหัสผ่านใหม่ไปให้",
+      input: "email",
+      inputPlaceholder: "you@example.com",
+      confirmButtonText: "ส่งลิงก์",
+      confirmButtonColor: "#5b6ee1",
+      showCancelButton: true,
+      cancelButtonText: "ยกเลิก"
+    });
+    if (!email) return;
+
+    const { error } = await sb.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/reset-password.html`
+    });
+
+    // Supabase ไม่บอกว่าอีเมลนี้มีอยู่จริงในระบบหรือไม่ (กัน enumeration)
+    // ดังนั้นไม่ว่าอีเมลจะมีอยู่จริงหรือไม่ ก็ให้ผู้ใช้เห็นข้อความสำเร็จเหมือนกัน
+    // เว้นแต่ error ที่ไม่เกี่ยวกับว่าอีเมลมีอยู่จริงไหม (เช่น rate limit)
+    if (error) {
+      Swal.fire({
+        icon: "error",
+        title: "ส่งลิงก์ไม่สำเร็จ",
+        text: translateAuthError(error.message),
+        confirmButtonColor: "#5b6ee1"
+      });
+      return;
+    }
+
+    Swal.fire({
+      icon: "success",
+      title: "ส่งลิงก์แล้ว",
+      text: "ถ้าอีเมลนี้มีอยู่ในระบบ เราได้ส่งลิงก์สำหรับตั้งรหัสผ่านใหม่ไปให้แล้ว กรุณาตรวจสอบกล่องข้อความ (รวมถึง Junk/Spam)",
+      confirmButtonColor: "#5b6ee1"
+    });
+  }
+
+  /* ---------------------------------------------------------------------
      LOGIN
      --------------------------------------------------------------------- */
   document.getElementById("formLogin").addEventListener("submit", async (e) => {
@@ -161,13 +203,8 @@
     if (identity.includes("@")) {
       ({ error } = await sb.auth.signInWithPassword({ email: identity, password }));
     } else {
-      // username ถูกบังคับให้เป็นตัวพิมพ์เล็กเสมอตอนสมัคร/ตั้งชื่อ (ดู formRegister,
-      // promptUsername() ใน app.js) แต่ถ้าไม่ lowercase ตรงนี้ด้วย ผู้ใช้ที่พิมพ์
-      // username ด้วยตัวพิมพ์ใหญ่-เล็กต่างจากตอนสมัคร (เช่น "Mind_2026" แทน
-      // "mind_2026") จะหาบัญชีไม่เจอและถูกแจ้งว่า login ไม่สำเร็จ ทั้งที่
-      // username/password ที่จำได้ถูกต้องทุกตัวอักษร
       const { data, error: loginError } = await sb.functions.invoke("username-login", {
-        body: { username: identity.toLowerCase(), password }
+        body: { username: identity, password }
       });
       error = loginError || (data?.error ? new Error(data.error) : null);
       if (!error && data?.access_token && data?.refresh_token) {
@@ -196,58 +233,8 @@
   });
 
   /* ---------------------------------------------------------------------
-     ลืมรหัสผ่าน — ขออีเมล แล้วให้ Supabase ส่งลิงก์ตั้งรหัสผ่านใหม่ไปให้
+     REGISTER
      --------------------------------------------------------------------- */
-  async function handleForgotPassword() {
-    const { value: email } = await Swal.fire({
-      icon: "question",
-      title: "ลืมรหัสผ่าน?",
-      text: "กรอกอีเมลที่ใช้สมัครสมาชิก ระบบจะส่งลิงก์สำหรับตั้งรหัสผ่านใหม่ไปให้",
-      input: "email",
-      inputPlaceholder: "you@example.com",
-      confirmButtonText: "ส่งลิงก์รีเซ็ตรหัสผ่าน",
-      confirmButtonColor: "#5b6ee1",
-      showCancelButton: true,
-      cancelButtonText: "ยกเลิก",
-      inputValidator: (value) => {
-        if (!value || !value.trim()) return "กรุณากรอกอีเมล";
-      }
-    });
-    if (!email) return;
-
-    Swal.fire({
-      title: "กำลังส่งอีเมล...",
-      allowOutsideClick: false,
-      didOpen: () => Swal.showLoading()
-    });
-
-    // redirectTo ต้องอยู่ใน Redirect URLs allowlist ของโปรเจกต์ (Authentication >
-    // URL Configuration) ไม่งั้น Supabase จะปฏิเสธ/ตัดพารามิเตอร์ทิ้งตอน redirect กลับมา
-    const { error } = await sb.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: `${window.location.origin}/reset-password.html`
-    });
-
-    if (error) {
-      Swal.fire({
-        icon: "error",
-        title: "ส่งไม่สำเร็จ",
-        text: translateAuthError(error.message),
-        confirmButtonColor: "#5b6ee1"
-      });
-      return;
-    }
-
-    // ไม่บอกตรงๆ ว่าอีเมลนี้มีในระบบหรือไม่ (กัน user enumeration) — Supabase
-    // เองก็ตอบ success เสมอไม่ว่าอีเมลจะมีอยู่จริงหรือไม่ ให้ข้อความสอดคล้องกัน
-    Swal.fire({
-      icon: "success",
-      title: "ส่งลิงก์แล้ว",
-      text: "ถ้าอีเมลนี้มีอยู่ในระบบ คุณจะได้รับลิงก์สำหรับตั้งรหัสผ่านใหม่ในอีเมลไม่นานนี้",
-      confirmButtonColor: "#5b6ee1"
-    });
-  }
-
-
   document.getElementById("formRegister").addEventListener("submit", async (e) => {
     e.preventDefault();
     const btn = document.getElementById("btnRegister");
@@ -371,30 +358,16 @@
       "User already registered": "อีเมลนี้ถูกใช้สมัครสมาชิกแล้ว",
       "Password should be at least 6 characters": "รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร",
       "Email not confirmed": "กรุณายืนยันอีเมลก่อนเข้าสู่ระบบ",
-      "Unable to validate email address: invalid format": "รูปแบบอีเมลไม่ถูกต้อง",
-      "Signup requires a valid password": "กรุณากรอกรหัสผ่านให้ถูกต้อง",
-      "Signups not allowed for this instance": "ขณะนี้ปิดรับสมัครสมาชิกใหม่ชั่วคราว",
-      "User not found": "ไม่พบบัญชีผู้ใช้งานนี้ในระบบ",
-      "Email rate limit exceeded": "มีการขอส่งอีเมลถี่เกินไป กรุณารอสักครู่แล้วลองใหม่",
-      "For security purposes, you can only request this after some time": "เพื่อความปลอดภัย กรุณารอสักครู่ก่อนลองใหม่อีกครั้ง",
       "Failed to fetch": "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่"
     };
     if (map[msg]) return map[msg];
 
-    // เผื่อข้อความมาจาก Supabase ในรูปแบบที่มีตัวเลข/รายละเอียดแปรผัน เช่น
-    // "For security purposes, you can only request this after 42 seconds"
-    if (/security purposes.*after \d+ seconds?/i.test(msg)) {
-      return "เพื่อความปลอดภัย กรุณารอสักครู่ก่อนลองใหม่อีกครั้ง";
-    }
+    // ใช้ร่วมกับ handleForgotPassword() — Supabase จำกัดจำนวนอีเมลที่ส่งได้ต่อช่วงเวลา
     if (/rate limit/i.test(msg)) {
       return "ทำรายการถี่เกินไป กรุณารอสักครู่แล้วลองใหม่อีกครั้ง";
     }
 
-    // ข้อความอื่นที่ไม่รู้จัก (เช่น error ใหม่จาก Supabase หรือจาก Edge Function ที่ยัง
-    // ไม่ได้แปล) — เก็บข้อความต้นฉบับไว้ใน console สำหรับ debug แต่ไม่โชว์ raw
-    // ภาษาอังกฤษให้ผู้ใช้เห็นตรงๆ เพื่อให้ประสบการณ์การใช้งานสอดคล้องกันทั้งหมด
-    console.warn("Untranslated auth error:", msg);
-    return "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง";
+    return msg;
   }
 
 </script>

@@ -33,6 +33,9 @@ let iosPickerCallback = null;
 const TASK_PAGE_SIZE = 10;  // จำนวนงานต่อหน้า
 let taskPage = 1;           // หน้าปัจจุบันของรายการงาน (หลังกรอง/ค้นหา)
 
+let currentView = "list";          // "list" | "calendar"
+let calendarCursor = new Date();   // เดือน/ปีที่กำลังดูอยู่ในมุมมองปฏิทิน (ใช้แค่ year/month)
+
 
 /* =====================================================================
    1. AUTH GUARD — เช็ค session ก่อนอนุญาตให้ใช้งานหน้านี้
@@ -104,6 +107,9 @@ async function loadProfile() {
   }
 
   if (!data.username) promptUsername();
+
+  const quietHoursSelect = document.getElementById("quietHoursSelect");
+  if (quietHoursSelect) quietHoursSelect.value = data.quiet_hours_enabled ? "on" : "off";
 }
 
 async function promptUsername() {
@@ -161,6 +167,7 @@ async function loadTasks() {
   allTasks = data;
   renderStats();
   renderTasks();
+  if (currentView === "calendar") renderCalendar();
 }
 
 
@@ -266,6 +273,7 @@ function renderCard(task, now) {
         <div class="subject">${escapeHtml(task.subject_name)}</div>
         <div class="task-name">${escapeHtml(task.task_name)}</div>
         <div class="desc">${escapeHtml(task.description || "ไม่มีรายละเอียดเพิ่มเติม")}</div>
+        ${task.teacher_name ? `<div class="teacher-name"><i class="fa-regular fa-id-badge"></i> ${escapeHtml(task.teacher_name)}</div>` : ""}
         ${task.file_url ? `<div class="attachment-name"><i class="fa-solid fa-paperclip"></i> ${escapeHtml(task.file_url.split("/").pop())}</div>` : ""}
       </div>
       <div class="meta">
@@ -314,6 +322,87 @@ function formatDuration(ms) {
   if (days > 0) return `${days} วัน ${hours} ชม.`;
   if (hours > 0) return `${hours} ชม. ${minutes} นาที`;
   return `${minutes} นาที`;
+}
+
+/* =====================================================================
+   5.1 มุมมองปฏิทิน (calendar view) — สลับมุมมองและ render ตารางเดือน
+   ===================================================================== */
+function switchView(view) {
+  currentView = view;
+  document.querySelectorAll("#viewSwitch button").forEach(b => b.classList.toggle("active", b.dataset.view === view));
+  document.getElementById("listView").style.display = view === "list" ? "" : "none";
+  document.getElementById("calendarView").style.display = view === "calendar" ? "" : "none";
+  if (view === "calendar") renderCalendar();
+}
+
+function changeCalendarMonth(delta) {
+  calendarCursor = new Date(calendarCursor.getFullYear(), calendarCursor.getMonth() + delta, 1);
+  renderCalendar();
+}
+
+function renderCalendar() {
+  const grid = document.getElementById("calendarGrid");
+  const label = document.getElementById("calendarMonthLabel");
+  const year = calendarCursor.getFullYear();
+  const month = calendarCursor.getMonth(); // 0-based
+
+  label.textContent = new Intl.DateTimeFormat("th-TH", { month: "long", year: "numeric" }).format(calendarCursor);
+
+  // จัดกลุ่มงานตามวันที่ตามเวลาไทย (key รูปแบบ "YYYY-MM-DD") เพื่อลงช่องปฏิทินที่ถูกวัน
+  const tasksByDate = {};
+  allTasks.forEach(t => {
+    const key = getBangkokParts(new Date(t.deadline)).date;
+    (tasksByDate[key] = tasksByDate[key] || []).push(t);
+  });
+
+  const firstOfMonth = new Date(year, month, 1);
+  const startWeekday = firstOfMonth.getDay(); // 0 = อาทิตย์
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const daysInPrevMonth = new Date(year, month, 0).getDate();
+
+  const todayKey = getBangkokParts(new Date()).date;
+  const now = new Date();
+
+  const cells = [];
+  // ช่องว่างต้นตาราง เติมด้วยวันท้ายๆ ของเดือนก่อนหน้า (แสดงจางๆ)
+  for (let i = startWeekday - 1; i >= 0; i--) {
+    cells.push({ day: daysInPrevMonth - i, otherMonth: true, key: null });
+  }
+  // วันของเดือนนี้
+  for (let d = 1; d <= daysInMonth; d++) {
+    const key = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    cells.push({ day: d, otherMonth: false, key });
+  }
+  // เติมท้ายตารางให้ครบแถวละ 7 คอลัมน์
+  while (cells.length % 7 !== 0) {
+    cells.push({ day: cells.length, otherMonth: true, key: null });
+  }
+
+  const MAX_CHIPS_PER_DAY = 3;
+
+  grid.innerHTML = cells.map(cell => {
+    if (cell.otherMonth) {
+      return `<div class="calendar-day other-month"><span class="day-num">${cell.day}</span></div>`;
+    }
+    const dayTasks = (tasksByDate[cell.key] || []).slice().sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
+    const isToday = cell.key === todayKey;
+    const visibleTasks = dayTasks.slice(0, MAX_CHIPS_PER_DAY);
+    const extraCount = dayTasks.length - visibleTasks.length;
+
+    const chips = visibleTasks.map(t => {
+      const status = getEffectiveStatus(t, now);
+      const tooltip = `${escapeAttr(t.subject_name)}: ${escapeAttr(t.task_name)}`;
+      return `<div class="cal-task-chip status-${status}" onclick="openEditModal('${t.id}')" title="${tooltip}">${escapeHtml(t.task_name)}</div>`;
+    }).join("");
+    const moreLabel = extraCount > 0 ? `<div class="cal-task-more">+${extraCount} เพิ่มเติม</div>` : "";
+
+    return `
+      <div class="calendar-day ${isToday ? "today" : ""} ${dayTasks.length ? "has-tasks" : ""}">
+        <span class="day-num">${cell.day}</span>
+        <div class="cal-task-list">${chips}${moreLabel}</div>
+      </div>
+    `;
+  }).join("");
 }
 
 function getBangkokParts(value) {
@@ -460,6 +549,38 @@ function setupEventListeners() {
     renderTasks();
   });
 
+  // --- โหมดงดแจ้งเตือนกลางคืน (23:00–06:00 เวลาไทย, คงที่) ---
+  document.getElementById("quietHoursSelect").addEventListener("change", async (e) => {
+    const enabled = e.target.value === "on";
+    const { error } = await sb.from("profiles").update({ quiet_hours_enabled: enabled }).eq("id", currentUser.id);
+    if (error) {
+      Swal.fire({ icon: "error", title: "บันทึกไม่สำเร็จ", text: error.message, confirmButtonColor: "#5b6ee1" });
+      e.target.value = enabled ? "off" : "on"; // คืนค่าเดิมถ้าบันทึกไม่สำเร็จ
+      return;
+    }
+    if (currentProfile) currentProfile.quiet_hours_enabled = enabled;
+    Swal.fire({
+      icon: "success",
+      title: enabled ? "เปิดโหมดงดแจ้งเตือนกลางคืนแล้ว" : "ปิดโหมดงดแจ้งเตือนกลางคืนแล้ว",
+      text: enabled ? "จะไม่มีการแจ้งเตือน LINE ช่วง 23:00–06:00 (เวลาไทย)" : "",
+      timer: 1600,
+      showConfirmButton: false
+    });
+  });
+
+  // --- view switch (รายการ / ปฏิทิน) ---
+  document.getElementById("viewSwitch").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-view]");
+    if (!btn) return;
+    switchView(btn.dataset.view);
+  });
+  document.getElementById("btnCalPrevMonth").addEventListener("click", () => changeCalendarMonth(-1));
+  document.getElementById("btnCalNextMonth").addEventListener("click", () => changeCalendarMonth(1));
+  document.getElementById("btnCalToday").addEventListener("click", () => {
+    calendarCursor = new Date();
+    renderCalendar();
+  });
+
   // --- pagination ---
   document.getElementById("btnPrevPage").addEventListener("click", () => {
     if (taskPage <= 1) return;
@@ -552,12 +673,13 @@ async function handleAddTask(e) {
   try {
     const taskName = document.getElementById("taskName").value.trim();
     const subjectName = document.getElementById("taskSubject").value.trim();
+    const teacherName = document.getElementById("taskTeacher").value.trim();
     const description = document.getElementById("taskDescription").value.trim();
     const deadlineValue = document.getElementById("taskDeadline").value;
     if (!deadlineValue) throw new Error("กรุณาเลือกวันและเวลาส่งงาน");
     const deadline = new Date(`${deadlineValue}:00+07:00`).toISOString();
     const status = document.getElementById("taskStatus").value;
-    const reminderOffsetMinutes = Number(document.getElementById("taskReminder").value);
+    const reminderEnabled = document.getElementById("taskReminderEnabled").checked;
 
     // 1) insert แถวงานก่อน เพื่อเอา task id ไปตั้งชื่อ path ไฟล์
     const { data: inserted, error: insertError } = await sb
@@ -565,11 +687,12 @@ async function handleAddTask(e) {
       .insert({
         task_name: taskName,
         subject_name: subjectName,
+        teacher_name: teacherName || null,
         description: description || null,
         deadline,
         user_id: currentUser.id,
         status,
-        reminder_offset_minutes: reminderOffsetMinutes
+        reminder_enabled: reminderEnabled
       })
       .select()
       .single();
@@ -685,6 +808,9 @@ function openEditModal(taskId) {
         <label class="task-edit-field">วิชา
           <input id="swalSubjectName" value="${escapeAttr(task.subject_name)}">
         </label>
+        <label class="task-edit-field">ชื่ออาจารย์ผู้สอน
+          <input id="swalTeacher" value="${escapeAttr(task.teacher_name || "")}">
+        </label>
         <label class="task-edit-field">รายละเอียด
           <textarea id="swalDescription" placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)">${escapeHtml(task.description || "")}</textarea>
         </label>
@@ -705,14 +831,14 @@ function openEditModal(taskId) {
           <option value="cancelled" ${task.status === "cancelled" ? "selected" : ""}>ยกเลิก</option>
             </select>
           </label>
-          <label class="task-edit-field">เตือนผ่าน LINE
-            <select id="swalReminder">
-          <option value="1440" ${task.reminder_offset_minutes === 1440 ? "selected" : ""}>ก่อนส่ง 1 วัน</option>
-          <option value="180" ${task.reminder_offset_minutes === 180 ? "selected" : ""}>ก่อนส่ง 3 ชม.</option>
-          <option value="60" ${task.reminder_offset_minutes === 60 ? "selected" : ""}>ก่อนส่ง 1 ชม.</option>
-          <option value="0" ${task.reminder_offset_minutes === 0 ? "selected" : ""}>ไม่แจ้งเตือน</option>
-            </select>
-          </label>
+          <div class="task-edit-field">
+            <span>การแจ้งเตือน</span>
+            <label class="switch-field">
+              <input type="checkbox" id="swalReminderEnabled" ${task.reminder_enabled !== false ? "checked" : ""}>
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+              <span class="switch-text">เปิดแจ้งเตือน</span>
+            </label>
+          </div>
         </div>
       </div>
     `,
@@ -732,23 +858,22 @@ function openEditModal(taskId) {
     },
     preConfirm: () => {
       const newDeadline = new Date(`${document.getElementById("swalDeadline").value}:00+07:00`).toISOString();
-      const newReminder = Number(document.getElementById("swalReminder").value);
 
-      // รีเซ็ต notify_stage เฉพาะตอนที่ deadline หรือรอบแจ้งเตือนเปลี่ยนจริงๆ เท่านั้น
-      // (เทียบด้วย Date object เพราะ deadline ที่ได้จาก DB กับที่คำนวณใหม่อาจต่าง format
-      // กัน แม้ค่าเวลาจริงจะเท่ากัน) — ถ้าแก้แค่ชื่องาน/รายละเอียด/สถานะ จะไม่ไปรีเซ็ต
-      // สถานะแจ้งเตือนที่ส่งไปแล้ว ป้องกันการส่งแจ้งเตือนซ้ำโดยไม่จำเป็น
+      // รีเซ็ต notify_rank เฉพาะตอนที่ deadline เปลี่ยนจริงๆ เท่านั้น (เทียบด้วย
+      // Date object เพราะ deadline ที่ได้จาก DB กับที่คำนวณใหม่อาจต่าง format กัน
+      // แม้ค่าเวลาจริงจะเท่ากัน) — ถ้าแก้แค่ชื่องาน/รายละเอียด/สถานะ/ชื่ออาจารย์
+      // จะไม่ไปรีเซ็ตขั้นแจ้งเตือนที่ส่งไปแล้ว ป้องกันการส่งแจ้งเตือนซ้ำโดยไม่จำเป็น
       const deadlineChanged = new Date(newDeadline).getTime() !== new Date(task.deadline).getTime();
-      const reminderChanged = newReminder !== task.reminder_offset_minutes;
 
       return {
         task_name: document.getElementById("swalTaskName").value.trim(),
         subject_name: document.getElementById("swalSubjectName").value.trim(),
+        teacher_name: document.getElementById("swalTeacher").value.trim() || null,
         description: document.getElementById("swalDescription").value.trim() || null,
         deadline: newDeadline,
         status: document.getElementById("swalStatus").value,
-        reminder_offset_minutes: newReminder,
-        ...(deadlineChanged || reminderChanged ? { notify_stage: null } : {})
+        reminder_enabled: document.getElementById("swalReminderEnabled").checked,
+        ...(deadlineChanged ? { notify_rank: 0 } : {})
       };
     }
   }).then(async (result) => {
