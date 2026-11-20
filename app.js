@@ -274,7 +274,7 @@ function renderCard(task, now) {
         <div class="task-name">${escapeHtml(task.task_name)}</div>
         <div class="desc">${escapeHtml(task.description || "ไม่มีรายละเอียดเพิ่มเติม")}</div>
         ${task.teacher_name ? `<div class="teacher-name"><i class="fa-regular fa-id-badge"></i> ${escapeHtml(task.teacher_name)}</div>` : ""}
-        ${task.file_url ? `<div class="attachment-name"><i class="fa-solid fa-paperclip"></i> ${escapeHtml(task.file_url.split("/").pop())}</div>` : ""}
+        ${task.file_url ? `<div class="attachment-name"><i class="fa-solid fa-paperclip"></i> ${escapeHtml(task.file_name || task.file_url.split("/").pop())}</div>` : ""}
       </div>
       <div class="meta">
         <select class="status-select badge ${status}" onchange="updateTaskStatus('${task.id}', this.value)" aria-label="สถานะของ ${escapeAttr(task.task_name)}">
@@ -286,7 +286,7 @@ function renderCard(task, now) {
         ${countdownHtml}
       </div>
       <div class="actions">
-        ${task.file_url ? `<div class="icon-btn" onclick="downloadFile('${task.id}')" title="ดาวน์โหลดไฟล์แนบ"><i class="fa-solid fa-paperclip"></i></div>` : ""}
+        ${task.file_url ? `<div class="icon-btn" onclick="downloadFile('${task.id}')" title="${isImageAttachment(task) ? "เปิดดูรูปภาพ" : "ดาวน์โหลดไฟล์แนบ"}"><i class="fa-solid fa-paperclip"></i></div>` : ""}
         <div class="icon-btn" onclick="openEditModal('${task.id}')" title="แก้ไข"><i class="fa-solid fa-pen"></i></div>
         <div class="icon-btn" onclick="deleteTask('${task.id}')" title="ลบ"><i class="fa-solid fa-trash"></i></div>
       </div>
@@ -656,6 +656,29 @@ function sanitizeFileName(name) {
   return `${base || "file"}${ext}`;
 }
 
+// Supabase Storage ปฏิเสธ object key ที่มีอักขระนอก ASCII (เช่นภาษาไทย) ด้วย
+// error "Invalid key" ดังนั้น "key" ที่ใช้เก็บไฟล์จริงบน storage ต้องเป็น ASCII
+// ล้วน — เอาเฉพาะนามสกุลไฟล์มาต่อกับชื่อคงที่ (path มี user id/task id นำหน้า
+// อยู่แล้วจึงไม่ชนกันแน่นอน โดยไม่ต้องพึ่งชื่อไฟล์เดิมเลย) ส่วนชื่อไฟล์จริงที่
+// ผู้ใช้ตั้ง (ภาษาไทยได้ตามปกติ) จะถูกเก็บแยกไว้ในคอลัมน์ file_name แล้วเอามา
+// โชว์ในรายการ/ตั้งชื่อไฟล์ตอนดาวน์โหลดแทน
+function getSafeStorageExtension(name) {
+  const raw = String(name || "");
+  const lastDot = raw.lastIndexOf(".");
+  if (lastDot <= 0) return "";
+  return raw.slice(lastDot).toLowerCase().replace(/[^a-z0-9.]/g, "").slice(0, 10);
+}
+
+// ไฟล์รูปภาพ: เปิดดูตรงๆ ในแท็บใหม่ (ไม่บังคับดาวน์โหลด) ส่วนไฟล์ประเภทอื่น
+// (pdf, docx, ฯลฯ) ยังบังคับดาวน์โหลดเหมือนเดิม เพราะเบราว์เซอร์ส่วนใหญ่เปิดรูป
+// ให้ดูได้เลยอยู่แล้ว การบังคับดาวน์โหลดรูปจะรำคาญเปล่าๆ
+const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"];
+function isImageAttachment(task) {
+  const name = task.file_name || task.file_url || "";
+  const ext = name.split(".").pop()?.toLowerCase() || "";
+  return IMAGE_EXTENSIONS.includes(ext);
+}
+
 function resetFileSelection() {
   selectedFile = null;
   document.getElementById("taskFile").value = "";
@@ -703,7 +726,9 @@ async function handleAddTask(e) {
     //    หมายเหตุ: ถ้าขั้นตอนไหนใน 2) fail จะ rollback งานที่ insert ไปแล้วในข้อ 1)
     //    เพื่อไม่ให้เหลืองานค้างที่ไม่มีไฟล์แนบ (หรือไฟล์กำพร้าที่ไม่ผูกกับงานไหนเลย)
     if (selectedFile) {
-      const filePath = `${currentUser.id}/${inserted.id}/${sanitizeFileName(selectedFile.name)}`;
+      const displayFileName = sanitizeFileName(selectedFile.name);
+      const ext = getSafeStorageExtension(selectedFile.name);
+      const filePath = `${currentUser.id}/${inserted.id}/attachment${ext}`;
       const { error: uploadError } = await sb.storage
         .from(BUCKET_NAME)
         .upload(filePath, selectedFile, { upsert: true });
@@ -715,7 +740,7 @@ async function handleAddTask(e) {
 
       const { error: updateError } = await sb
         .from("tasks")
-        .update({ file_url: filePath })
+        .update({ file_url: filePath, file_name: displayFileName })
         .eq("id", inserted.id);
 
       if (updateError) {
@@ -753,9 +778,10 @@ async function downloadFile(taskId) {
   const task = allTasks.find(t => t.id === taskId);
   if (!task?.file_url) return;
 
+  const isImage = isImageAttachment(task);
   const { data, error } = await sb.storage
     .from(BUCKET_NAME)
-    .createSignedUrl(task.file_url, 60); // ลิงก์ใช้ได้ 60 วินาที
+    .createSignedUrl(task.file_url, 60, isImage ? undefined : (task.file_name ? { download: task.file_name } : undefined)); // ลิงก์ใช้ได้ 60 วินาที
 
   if (error) {
     Swal.fire({ icon: "error", title: "เปิดไฟล์ไม่ได้", text: error.message, confirmButtonColor: "#5b6ee1" });
@@ -1007,10 +1033,11 @@ async function handleLogout() {
   const confirm = await Swal.fire({
     icon: "question",
     title: "ออกจากระบบ?",
+    text: "คุณจะต้องเข้าสู่ระบบใหม่อีกครั้งเพื่อใช้งานต่อ",
     showCancelButton: true,
     confirmButtonText: "ออกจากระบบ",
     cancelButtonText: "ยกเลิก",
-    confirmButtonColor: "#5b6ee1"
+    confirmButtonColor: "#e2574c"
   });
   if (!confirm.isConfirmed) return;
 
